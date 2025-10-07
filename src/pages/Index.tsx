@@ -1,77 +1,103 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { Auth } from "@/components/Auth";
 import { ChatHeader } from "@/components/ChatHeader";
 import { ChatMessage } from "@/components/ChatMessage";
 import { ChatInput } from "@/components/ChatInput";
-
-interface Message {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-}
+import { Sidebar } from "@/components/Sidebar";
+import { useChat } from "@/hooks/useChat";
 
 const Index = () => {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "1",
-      role: "assistant",
-      content: "System initialized. Neural network online.\nHow can I assist you today?",
-    },
-  ]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  
+  const {
+    conversations,
+    currentConversation,
+    messages,
+    isLoading,
+    setCurrentConversation,
+    createConversation,
+    sendMessage,
+    deleteConversation,
+  } = useChat();
 
-  const handleSendMessage = async (content: string) => {
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: "user",
-      content,
-    };
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
 
-    setMessages((prev) => [...prev, userMessage]);
-    setIsLoading(true);
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
 
-    // Simulate AI response
-    setTimeout(() => {
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: "Processing request...\nI'm a demo interface. Connect me to an AI backend to enable real conversations.",
-      };
-      setMessages((prev) => [...prev, aiMessage]);
-      setIsLoading(false);
-    }, 1000);
-  };
+    return () => subscription.unsubscribe();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <p className="text-primary font-mono text-glow terminal-cursor">Inicializando sistema neural</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Auth />;
+  }
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <ChatHeader />
+    <div className="min-h-screen flex bg-background">
+      <Sidebar
+        conversations={conversations}
+        currentConversation={currentConversation}
+        onSelectConversation={setCurrentConversation}
+        onNewConversation={createConversation}
+        onDeleteConversation={deleteConversation}
+      />
       
-      <main className="flex-1 overflow-y-auto">
-        <div className="container max-w-4xl mx-auto py-6">
-          {messages.map((message) => (
-            <ChatMessage
-              key={message.id}
-              role={message.role}
-              content={message.content}
-            />
-          ))}
-          {isLoading && (
-            <div className="flex gap-3 p-4 fade-in">
-              <div className="flex gap-3">
-                <div className="flex-shrink-0 w-8 h-8 rounded border bg-primary/20 border-primary border-glow flex items-center justify-center text-sm font-bold text-primary">
-                  AI
-                </div>
-                <div className="rounded-lg px-4 py-3 border bg-card border-border border-glow">
-                  <p className="text-sm font-mono text-primary terminal-cursor">
-                    Thinking
-                  </p>
+      <div className="flex-1 flex flex-col">
+        <ChatHeader />
+        
+        <main className="flex-1 overflow-y-auto">
+          <div className="container max-w-4xl mx-auto py-6">
+            {messages.length === 0 && (
+              <div className="flex items-center justify-center h-full">
+                <p className="text-muted-foreground font-mono text-center">
+                  Sistema neural pronto.<br />
+                  Envie uma mensagem para começar.
+                </p>
+              </div>
+            )}
+            {messages.map((message) => (
+              <ChatMessage
+                key={message.id}
+                role={message.role}
+                content={message.content}
+              />
+            ))}
+            {isLoading && (
+              <div className="flex gap-3 p-4 fade-in">
+                <div className="flex gap-3">
+                  <div className="flex-shrink-0 w-8 h-8 rounded border bg-primary/20 border-primary border-glow flex items-center justify-center text-sm font-bold text-primary">
+                    AI
+                  </div>
+                  <div className="rounded-lg px-4 py-3 border bg-card border-border border-glow">
+                    <p className="text-sm font-mono text-primary terminal-cursor">
+                      Processando
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-        </div>
-      </main>
+            )}
+          </div>
+        </main>
 
-      <ChatInput onSend={handleSendMessage} disabled={isLoading} />
+        <ChatInput onSend={sendMessage} disabled={isLoading || !currentConversation} />
+      </div>
     </div>
   );
 };
